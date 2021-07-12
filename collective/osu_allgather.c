@@ -1,4 +1,4 @@
-#define BENCHMARK "OSU MPI%s Allgatherv Latency Test"
+#define BENCHMARK "OSU MPI%s Allgather Latency Test"
 /*
  * Copyright (C) 2002-2021 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.
@@ -9,23 +9,18 @@
  * copyright file COPYRIGHT in the top level OMB directory.
  */
 #include <osu_util_mpi.h>
-#include <size_distributions.h>
 
 int main(int argc, char *argv[])
 {
-    int i, numprocs, rank, size, disp, rank_size;
+    int i, numprocs, rank, size;
     double latency = 0.0, t_start = 0.0, t_stop = 0.0, *iteration_means = NULL;
     double timer=0.0;
     double avg_time = 0.0, max_time = 0.0, min_time = 0.0, std_dev = 0.0;
     char *sendbuf, *recvbuf;
-    int *rdispls=NULL, *recvcounts=NULL;
     int po_ret;
     size_t bufsize;
     options.bench = COLLECTIVE;
     options.subtype = LAT;
-
-    extern int (*distribution_functions[])(int, int, int);
-    extern int (*distribution_total_blocks[])(int, int);
 
     set_header(HEADER);
     set_benchmark_name("osu_allgather");
@@ -74,73 +69,39 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-
     if ((options.max_message_size * numprocs) > options.max_mem_limit) {
         options.max_message_size = options.max_mem_limit / numprocs;
     }
 
-    if (allocate_memory_coll((void**)&recvcounts, numprocs*sizeof(int), NONE)) {
+    if (allocate_memory_coll((void**)&sendbuf, options.max_message_size, options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
         MPI_CHECK(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
     }
-    if (allocate_memory_coll((void**)&rdispls, numprocs*sizeof(int), NONE)) {
-        fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
-        MPI_CHECK(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
-    }
+    set_buffer(sendbuf, options.accel, 1, options.max_message_size);
 
-    rank_size = distribution_functions[options.size_distribution](numprocs, options.max_message_size, rank);
-
-    if (allocate_memory_coll((void**)&sendbuf, rank_size, options.accel)) {
-        fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
-        MPI_CHECK(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
-    }
-    /* set_buffer(sendbuf, options.accel, 1, options.max_message_size); */
-    set_buffer(sendbuf, options.accel, 1, rank_size);
-
-    rank_size = distribution_total_blocks[options.size_distribution](numprocs, options.max_message_size);
-    /* if(rank == 0) fprintf(stdout, "rank_size 1: %d\n", rank_size); */
-
-    /* bufsize = options.max_message_size * numprocs; */
-    if (allocate_memory_coll((void**)&recvbuf, rank_size,
+    bufsize = options.max_message_size * numprocs;
+    if (allocate_memory_coll((void**)&recvbuf, bufsize,
                 options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
         MPI_CHECK(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
     }
-    /* set_buffer(recvbuf, options.accel, 0, bufsize); */
-    /* if(rank == 1) fprintf(stdout, "rank_size 2: %d\n", rank_size); */
-    set_buffer(recvbuf, options.accel, 0, rank_size);
-
+    set_buffer(recvbuf, options.accel, 0, bufsize);
 
     print_preamble(rank);
 
     for(size=options.min_message_size; size <= options.max_message_size; size *= 2) {
+
         if(size > LARGE_MESSAGE_SIZE) {
             options.skip = options.skip_large;
             options.iterations = options.iterations_large;
         }
 
         MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
-
-        disp = 0;
-        for ( i = 0; i < numprocs; i++) {
-            rank_size = distribution_functions[options.size_distribution](numprocs, size, i);
-            recvcounts[i] = rank_size;
-            rdispls[i] = disp;
-            /* if(rank == 0) printf("rank %d: %d = %d\n", i, disp, rank_size); */
-            disp += rank_size;
-        }
-        rank_size = distribution_functions[options.size_distribution](numprocs, size, rank);
-
-        /* if(rank == 1) fprintf(stdout, "rank_size 3: %d\n", rank_size); */
-
-
-        MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
         timer=0.0;
         for(i=0; i < options.iterations + options.skip ; i++) {
-
             t_start = MPI_Wtime();
-
-            MPI_CHECK(MPI_Allgatherv(sendbuf, rank_size, MPI_CHAR, recvbuf, recvcounts, rdispls, MPI_CHAR, MPI_COMM_WORLD));
+            MPI_CHECK(MPI_Allgather( sendbuf, size, MPI_CHAR,
+                           recvbuf, size, MPI_CHAR, MPI_COMM_WORLD ));
 
             t_stop = MPI_Wtime();
 
@@ -186,8 +147,6 @@ int main(int argc, char *argv[])
         MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
     }
 
-    free_buffer(rdispls, NONE);
-    free_buffer(recvcounts, NONE);
     free_buffer(sendbuf, options.accel);
     free_buffer(recvbuf, options.accel);
     free(iteration_means);
