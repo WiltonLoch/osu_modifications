@@ -17,10 +17,10 @@ int broadcast_total_blocks(int p, int default_size){
 }
 
 int spike(int p, int default_size, int rank){
-    return rank == 0 ? default_size/2 : default_size / (2 * (p - 1));
+    return rank == 0 ? (p * default_size) : (p * default_size) / (p - 1);
 }
 int spike_total_blocks(int p, int default_size){
-    return default_size;
+    return 2 * p * default_size;
 }
 
 int half_full(int p, int default_size, int rank){
