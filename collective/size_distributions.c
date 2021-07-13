@@ -31,17 +31,17 @@ int half_full_total_blocks(int p, int default_size){
 }
 
 int linearly_decreasing(int p, int default_size, int rank){
-    return round(2.0f * (float) default_size * ((float) (p - 1 - rank) / (p - 1)));
+    return 2.0f * (float) default_size * ((float) (p - 1 - rank) / (p - 1));
 }
 int linearly_decreasing_total_blocks(int p, int default_size){
     return p * default_size;
 }
 
 int geometric_curve(int p, int default_size, int rank){
-    return (default_size * (p + 1)) / ((rank + 1.5) * log(p + 1));
+    return (p * default_size) / ((rank + 1.5) * log(p + 1));
 }
 int geometric_curve_total_blocks(int p, int default_size){
-    return (p + 1) * default_size;
+    return p * default_size;
 }
 
 int (*distribution_functions[])(int, int, int) = {
